@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible" />
+  <meta name="description" content="Harvestor Monitor - Flutter + Firebase" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Harvestor Monitor</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1E88E5" />
+
+  <!-- Firebase Configuration -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+    import { getAuth } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpGHhE-ir8S-DxNPWeQc5KU_vfGIVwigQ",
+      authDomain: "harvestorr.firebaseapp.com",
+      databaseURL: "https://harvestorr-default-rtdb.firebaseio.com",
+      projectId: "harvestorr",
+      storageBucket: "harvestorr.firebasestorage.app",
+      messagingSenderId: "436902316402",
+      appId: "1:436902316402:web:b02d1eff201c76298475eb",
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    // Make auth available globally for Flutter web
+    window.firebaseAuth = auth;
+  </script>
+
+  <!-- Google Sign-In SDK -->
+  <script src="https://apis.google.com/js/platform.js" async defer></script>
+</head>
+<body>
+  <script>
+    const serviceWorkerVersion = null;
+  </script>
+  <script src="flutter.js" defer></script>
+  <script>
+    window.addEventListener('load', function(ev) {
+      _flutter.loader.loadEntrypoint({serviceWorker: {
+        serviceWorkerVersion: serviceWorkerVersion,
+      }}).then(function(engineInitializer) {
+        return engineInitializer.initializeEngine();
+      }).then(function(appRunner) {
+        return appRunner.runApp();
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harvester 3D Visualizer</title>
+  <style>
+    body { margin: 0; background: #0b1b0f; color: #e6ffe6; font: 14px/1.4 system-ui, sans-serif; }
+    #hud { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 8px; }
+    canvas { display: block; }
+  </style>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <!-- Firebase Web SDK (modular builds) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="../firebase-config.js"></script>
+</head>
+<body>
+  <div id="hud">Harvester 3D • Demo<br><span id="info">Device: (none)</span><br><span id="auth">Auth: …</span></div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const deviceId = params.get('deviceId') || 'HARV-001';
+    document.getElementById('info').textContent = `Device: ${deviceId}`;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1b0f);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 2.2, 6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const hemiLight = new THREE.HemisphereLight(0xeaffea, 0x223322, 0.8);
+    scene.add(hemiLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    dirLight.position.set(3, 6, 3);
+    scene.add(dirLight);
+
+    // Ground
+    const groundGeo = new THREE.PlaneGeometry(100, 100);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x102515 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -1;
+    scene.add(ground);
+
+    // Simple harvester "cutter" and "conveyor" representation
+    const cutterGeo = new THREE.CylinderGeometry(0.7, 0.7, 2.4, 24);
+    const cutterMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, metalness: 0.2, roughness: 0.5 });
+    const cutter = new THREE.Mesh(cutterGeo, cutterMat);
+    cutter.rotation.z = Math.PI / 2;
+    cutter.position.set(0, 0, 0);
+    scene.add(cutter);
+
+    const conveyorGeo = new THREE.BoxGeometry(2.2, 0.2, 0.6);
+    const conveyorMat = new THREE.MeshStandardMaterial({ color: 0x00796b });
+    const conveyor = new THREE.Mesh(conveyorGeo, conveyorMat);
+    conveyor.position.set(0, 0.2, -1.2);
+    scene.add(conveyor);
+
+    // Grain tank level (simple box that grows in Y)
+    const tankGeo = new THREE.BoxGeometry(1.2, 1.0, 1.0);
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0xffa000, transparent: true, opacity: 0.8 });
+    const tank = new THREE.Mesh(tankGeo, tankMat);
+    tank.position.set(0, 0.5, 1.4);
+    scene.add(tank);
+
+    let rpm = 900; // default until RTDB data arrives
+    let tankPct = 0.45; // default 45%
+
+    function animate() {
+      requestAnimationFrame(animate);
+      // Cutter rotation based on rpm
+      const rps = rpm / 60.0;
+      cutter.rotation.x += rps * 0.02;
+
+      // Conveyor subtle vibration
+      conveyor.position.y = 0.2 + Math.sin(performance.now() / 300) * 0.02;
+
+      // Tank fill height changes smoothly
+      const targetY = 0.5 * Math.max(0.05, Math.min(1, tankPct));
+      tank.scale.y += (targetY - tank.scale.y) * 0.1;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Firebase init (uses config from ../firebase-config.js)
+    let fbApp;
+    try {
+      fbApp = firebase.initializeApp(firebaseConfig);
+    } catch (e) {
+      console.warn('Firebase init error', e);
+    }
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    // Show auth state and attempt to reuse existing session from same origin.
+    auth.onAuthStateChanged(async (user) => {
+      const authEl = document.getElementById('auth');
+      if (user) {
+        authEl.textContent = `Auth: ${user.email || user.uid}`;
+        subscribeLive();
+      } else {
+        authEl.textContent = 'Auth: signing in anonymously…';
+        try {
+          await auth.signInAnonymously();
+        } catch (e) {
+          authEl.textContent = 'Auth: failed (anonymous not allowed by rules)';
+          console.warn('Anonymous sign-in failed. Ensure rules allow or open via logged-in session.', e);
+        }
+      }
+    });
+
+    function subscribeLive() {
+      const ref = db.ref(`live/${deviceId}`);
+      ref.on('value', (snap) => {
+        const v = snap.val() || {};
+        if (typeof v.ptoRpm === 'number') rpm = v.ptoRpm;
+        if (typeof v.tankLevelPct === 'number') tankPct = v.tankLevelPct / 100.0;
+      }, (err) => console.warn('RTDB error', err));
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,1381 @@
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../theme/app_theme.dart';
+import '../state/app_state.dart';
+import 'dart:typed_data';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
+class ReportsScreen extends StatefulWidget {
+  const ReportsScreen({super.key});
+
+  @override
+  State<ReportsScreen> createState() => _ReportsScreenState();
+}
+
+class _ReportsScreenState extends State<ReportsScreen> {
+  String _selectedRange = 'Last 1 Day';
+  bool _isExporting = false;
+  bool _showEmptyState = false;
+
+  // Date range options
+  final Map<String, DateTimeRange> _dateRanges = {
+    'Last 1 Day': DateTimeRange(
+      start: DateTime.now().subtract(const Duration(days: 1)),
+      end: DateTime.now(),
+    ),
+    'Last 7 Days': DateTimeRange(
+      start: DateTime.now().subtract(const Duration(days: 7)),
+      end: DateTime.now(),
+    ),
+    'Last 30 Days': DateTimeRange(
+      start: DateTime.now().subtract(const Duration(days: 30)),
+      end: DateTime.now(),
+    ),
+    'Last Month': DateTimeRange(
+      start: DateTime.now().subtract(const Duration(days: 30)),
+      end: DateTime.now(),
+    ),
+    'Last 3 Months': DateTimeRange(
+      start: DateTime.now().subtract(const Duration(days: 90)),
+      end: DateTime.now(),
+    ),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final deviceId = context.watch<AppState>().deviceId;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.primary, AppColors.primaryDark],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        elevation: 0,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.analytics_outlined,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Reports & Analytics',
+              style: AppTextStyles.heading2.withColor(Colors.white).copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+              ),
+            ),
+          ],
+        ),
+        centerTitle: true,
+        actions: [
+          _buildEnhancedExportButton(),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildDateRangePicker(),
+          Expanded(
+            child: _buildReportsContent(deviceId),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateRangePicker() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: AppColors.border.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.date_range,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Time Period',
+                style: AppTextStyles.cardTitle.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _dateRanges.entries.map((entry) {
+                final isSelected = _selectedRange == entry.key;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _selectedRange = entry.key);
+                      },
+                      borderRadius: BorderRadius.circular(25),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.primary : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(25),
+                          border: Border.all(
+                            color: isSelected ? AppColors.primary : Colors.grey.shade300,
+                            width: 1.5,
+                          ),
+                          boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.primary.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                        ),
+                        child: Row(
+                          children: [
+                            if (isSelected)
+                              Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                child: Icon(
+                                  Icons.check_circle,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            Text(
+                              entry.key,
+                              style: AppTextStyles.bodyMedium.copyWith(
+                                color: isSelected ? Colors.white : AppColors.textPrimary,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Selected: ${_dateRanges[_selectedRange]?.duration.inDays ?? 0} days',
+                  style: AppTextStyles.bodySmall.withColor(AppColors.textSecondary),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => _showCustomRangePicker(),
+                icon: const Icon(Icons.edit_calendar, size: 18),
+                label: const Text('Custom Range'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  textStyle: AppTextStyles.bodyMedium,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportsContent(String deviceId) {
+    final dailyRef = FirebaseDatabase.instance.ref('aggregates/daily/$deviceId');
+
+    return StreamBuilder(
+      stream: dailyRef.onValue,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final data = (snapshot.data as DatabaseEvent?)?.snapshot.value as Map? ?? {};
+
+        if (data.isEmpty) {
+          return _buildEmptyState();
+        }
+
+        final filteredData = _filterDataByDateRange(data as Map<String, dynamic>);
+        final hasData = filteredData.isNotEmpty;
+
+        if (!hasData) {
+          return _buildNoDataForRange();
+        }
+
+        return _buildCharts(filteredData);
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Enhanced illustration with harvester/field theme
+            Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.primary.withOpacity(0.1), AppColors.success.withOpacity(0.1)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 2),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    Icons.agriculture,
+                    size: 60,
+                    color: AppColors.primary,
+                  ),
+                  Positioned(
+                    top: 20,
+                    right: 20,
+                    child: Icon(
+                      Icons.grass,
+                      size: 20,
+                      color: AppColors.success,
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 25,
+                    left: 25,
+                    child: Icon(
+                      Icons.local_shipping,
+                      size: 18,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'Ready to Harvest Insights?',
+              style: AppTextStyles.heading2.copyWith(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                'No harvest data yet? That\'s okay! Start harvesting to unlock powerful insights, track your progress, and optimize your operations.',
+                style: AppTextStyles.bodyLarge.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 32),
+            // Primary CTA with enhanced styling
+            Container(
+              width: double.infinity,
+              height: 56,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.primary, AppColors.primaryDark],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ElevatedButton(
+                onPressed: () {
+                  // Navigate to dashboard with animation
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.play_arrow, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Begin Your First Harvest',
+                      style: AppTextStyles.buttonText.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Secondary CTA
+            TextButton.icon(
+              onPressed: () {
+                // Show tutorial or help
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('📚 Tutorial feature coming soon!'),
+                    backgroundColor: AppColors.info,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.school, size: 20),
+              label: const Text('Watch Tutorial'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                textStyle: AppTextStyles.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Mini placeholder chart preview
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border.withOpacity(0.5)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Preview: Your Analytics Dashboard',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildMiniChartPlaceholder('Grain (kg)', Icons.grain, AppColors.success),
+                      _buildMiniChartPlaceholder('Bales', Icons.inventory, AppColors.info),
+                      _buildMiniChartPlaceholder('Efficiency', Icons.trending_up, AppColors.warning),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMiniChartPlaceholder(String label, IconData icon, Color color) {
+    return Column(
+      children: [
+        Container(
+          width: 60,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: AppTextStyles.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNoDataForRange() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.date_range,
+            size: 60,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No data for selected range',
+            style: AppTextStyles.heading4.withColor(AppColors.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try selecting a different date range',
+            style: AppTextStyles.bodyMedium.withColor(AppColors.textSecondary),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCharts(Map<String, dynamic> data) {
+    final grainPoints = _getGrainChartData(data);
+    final balesGroups = _getBalesChartData(data);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildChartCard(
+            title: 'Daily Harvest (kg)',
+            subtitle: 'Grain harvested per day',
+            child: _buildHarvestChart(grainPoints),
+            height: 280,
+          ),
+          const SizedBox(height: 24),
+          _buildChartCard(
+            title: 'Bales Produced',
+            subtitle: 'Bales created per day',
+            child: _buildBalesChart(balesGroups),
+            height: 280,
+          ),
+          const SizedBox(height: 24),
+          _buildSummaryCard(data),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartCard({
+    required String title,
+    required String subtitle,
+    required Widget child,
+    required double height,
+  }) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppTheme.cardBorderRadius,
+        side: const BorderSide(color: AppColors.border, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AppTextStyles.cardTitle,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: AppTextStyles.bodySmall.withColor(AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                _buildChartControls(),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: height - 100, // Account for header and controls
+              child: child,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChartControls() {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () {},
+          icon: const Icon(Icons.zoom_in, size: 20),
+          tooltip: 'Zoom In',
+        ),
+        IconButton(
+          onPressed: () {},
+          icon: const Icon(Icons.zoom_out, size: 20),
+          tooltip: 'Zoom Out',
+        ),
+        IconButton(
+          onPressed: () {},
+          icon: const Icon(Icons.fullscreen, size: 20),
+          tooltip: 'Fullscreen',
+        ),
+        IconButton(
+          onPressed: () {},
+          icon: const Icon(Icons.download, size: 20),
+          tooltip: 'Export as Image',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHarvestChart(List<FlSpot> spots) {
+    return LineChart(
+      LineChartData(
+        gridData: const FlGridData(show: true, drawVerticalLine: false),
+        titlesData: FlTitlesData(
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                if (value.toInt() % 2 == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Day ${value.toInt() + 1}',
+                      style: AppTextStyles.bodySmall.withColor(AppColors.textSecondary),
+                    ),
+                  );
+                }
+                return const SizedBox();
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  value.toInt().toString(),
+                  style: AppTextStyles.bodySmall.withColor(AppColors.textSecondary),
+                );
+              },
+            ),
+          ),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        borderData: FlBorderData(show: true),
+        lineBarsData: [
+          LineChartBarData(
+            isCurved: true,
+            barWidth: 3,
+            color: AppColors.primary,
+            belowBarData: BarAreaData(
+              show: true,
+              color: AppColors.primary.withOpacity(0.2),
+            ),
+            spots: spots.isEmpty ? [const FlSpot(0, 0)] : spots,
+            dotData: const FlDotData(show: true),
+          )
+        ],
+        lineTouchData: LineTouchData(
+          enabled: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBalesChart(List<BarChartGroupData> groups) {
+    return BarChart(
+      BarChartData(
+        gridData: const FlGridData(show: false),
+        titlesData: FlTitlesData(
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                if (value.toInt() % 2 == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Day ${value.toInt() + 1}',
+                      style: AppTextStyles.bodySmall.withColor(AppColors.textSecondary),
+                    ),
+                  );
+                }
+                return const SizedBox();
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  value.toInt().toString(),
+                  style: AppTextStyles.bodySmall.withColor(AppColors.textSecondary),
+                );
+              },
+            ),
+          ),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        borderData: FlBorderData(show: true),
+        barGroups: groups.isEmpty
+            ? [BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 0)])]
+            : groups,
+        barTouchData: BarTouchData(
+          enabled: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard(Map<String, dynamic> data) {
+    final totalGrain = data.values
+        .map((v) => (v['grainKg'] is num) ? (v['grainKg'] as num).toDouble() : 0.0)
+        .fold(0.0, (a, b) => a + b);
+
+    final totalBales = data.values
+        .map((v) => (v['bales'] is num) ? (v['bales'] as num).toDouble() : 0.0)
+        .fold(0.0, (a, b) => a + b);
+
+    final avgEfficiency = totalGrain > 0 && data.isNotEmpty ? totalGrain / data.length : 0.0;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppTheme.cardBorderRadius,
+        side: const BorderSide(color: AppColors.border, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.summarize, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Summary',
+                  style: AppTextStyles.cardTitle,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildSummaryItem(
+                    'Total Grain',
+                    '${totalGrain.toInt()} kg',
+                    Icons.grain,
+                    AppColors.success,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: AppColors.border,
+                ),
+                Expanded(
+                  child: _buildSummaryItem(
+                    'Total Bales',
+                    totalBales.toInt().toString(),
+                    Icons.inventory,
+                    AppColors.info,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: AppColors.border,
+                ),
+                Expanded(
+                  child: _buildSummaryItem(
+                    'Avg. Daily',
+                    '${avgEfficiency.toInt()} kg/day',
+                    Icons.trending_up,
+                    AppColors.warning,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryItem(String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: AppTextStyles.heading4.withColor(color),
+        ),
+        Text(
+          label,
+          style: AppTextStyles.bodySmall.withColor(AppColors.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  List<FlSpot> _getGrainChartData(Map<String, dynamic> data) {
+    final entries = _filterDataByDateRange(data);
+    final spots = <FlSpot>[];
+    double x = 0;
+
+    for (final kv in entries.entries) {
+      final grain = (kv.value['grainKg'] is num) ? (kv.value['grainKg'] as num).toDouble() : 0.0;
+      spots.add(FlSpot(x, grain));
+      x += 1;
+    }
+
+    return spots;
+  }
+
+  List<BarChartGroupData> _getBalesChartData(Map<String, dynamic> data) {
+    final entries = _filterDataByDateRange(data);
+    final groups = <BarChartGroupData>[];
+    double x = 0;
+
+    for (final kv in entries.entries) {
+      final bales = (kv.value['bales'] is num) ? (kv.value['bales'] as num).toDouble() : 0.0;
+      groups.add(BarChartGroupData(
+        x: x.toInt(),
+        barRods: [BarChartRodData(
+          toY: bales,
+          color: _getBaleColor(bales),
+          width: 16,
+        )],
+      ));
+      x += 1;
+    }
+
+    return groups;
+  }
+
+  Color _getBaleColor(double bales) {
+    if (bales >= 10) return AppColors.success;
+    if (bales >= 5) return AppColors.warning;
+    return AppColors.error;
+  }
+
+  Map<String, dynamic> _filterDataByDateRange(Map<String, dynamic> data) {
+    final range = _dateRanges[_selectedRange];
+    if (range == null) return data;
+
+    final filtered = <String, dynamic>{};
+    for (final entry in data.entries) {
+      try {
+        final date = DateFormat('yyyy-MM-dd').parse(entry.key);
+        if (date.isAfter(range.start.subtract(const Duration(days: 1))) &&
+            date.isBefore(range.end.add(const Duration(days: 1)))) {
+          filtered[entry.key] = entry.value;
+        }
+      } catch (e) {
+        // Skip invalid date entries
+      }
+    }
+
+    return filtered;
+  }
+
+  Future<void> _showCustomRangePicker() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now(),
+      initialDateRange: _dateRanges[_selectedRange],
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedRange = 'Custom Range';
+        _dateRanges['Custom Range'] = picked;
+      });
+    }
+  }
+
+  Widget _buildEnhancedExportButton() {
+    return Container(
+      margin: const EdgeInsets.only(right: 16),
+      child: PopupMenuButton<String>(
+        onSelected: (value) => _exportData(value),
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'pdf',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Export PDF'),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'csv',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.table_chart, color: Colors.green, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Export CSV'),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'excel',
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.grid_on, color: Colors.blue, size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Export Excel'),
+              ],
+            ),
+          ),
+        ],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+          ),
+          child: _isExporting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : const Row(
+                  children: [
+                    Icon(Icons.download, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Export',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportData(String format) async {
+    setState(() => _isExporting = true);
+
+    try {
+      switch (format) {
+        case 'pdf':
+          await _exportEnhancedPdf();
+          break;
+        case 'csv':
+          await _exportCsv();
+          break;
+        case 'excel':
+          await _exportExcel();
+          break;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Export failed: $e'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
+  Future<void> _exportCsv() async {
+    try {
+      final deviceId = context.read<AppState>().deviceId;
+      final dailyRef = FirebaseDatabase.instance.ref('aggregates/daily/$deviceId');
+      final snapshot = await dailyRef.get();
+      final data = (snapshot.value as Map?) ?? {};
+
+      final csvData = StringBuffer();
+      csvData.writeln('Date,Grain (kg),Bales,Efficiency (kg)');
+
+      for (final entry in data.entries) {
+        final grain = (entry.value['grainKg'] is num)
+            ? (entry.value['grainKg'] as num).toDouble()
+            : 0.0;
+        final bales = (entry.value['bales'] is num)
+            ? (entry.value['bales'] as num).toDouble()
+            : 0.0;
+        final efficiency = grain > 0 ? grain : 0.0;
+
+        csvData.writeln('${entry.key},${grain.toInt()},${bales.toInt()},${efficiency.toInt()}');
+      }
+
+      final filename = 'harvest_data_${DateFormat('yyyy_MM_dd').format(DateTime.now())}.csv';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📊 CSV exported as \'$filename\''),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      throw Exception('CSV export failed: $e');
+    }
+  }
+
+  Future<void> _exportExcel() async {
+    try {
+      final deviceId = context.read<AppState>().deviceId;
+      final dailyRef = FirebaseDatabase.instance.ref('aggregates/daily/$deviceId');
+      final snapshot = await dailyRef.get();
+      final data = (snapshot.value as Map?) ?? {};
+
+      final filename = 'harvest_data_${DateFormat('yyyy_MM_dd').format(DateTime.now())}.xlsx';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📈 Excel file exported as \'$filename\''),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      throw Exception('Excel export failed: $e');
+    }
+  }
+
+  pw.TableRow _buildPdfHeaderRow(String col1, String col2, String col3, String col4) {
+    return pw.TableRow(
+      decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            col1,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+          ),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            col2,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            col3,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            col4,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.TableRow _buildPdfRow(String col1, String col2, String col3, String col4) {
+    return pw.TableRow(
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(6),
+          child: pw.Text(col1, style: const pw.TextStyle(fontSize: 10)),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(6),
+          child: pw.Text(col2, style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.right),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(6),
+          child: pw.Text(col3, style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.right),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(6),
+          child: pw.Text(col4, style: const pw.TextStyle(fontSize: 10), textAlign: pw.TextAlign.right),
+        ),
+      ],
+    );
+  }
+  Future<void> _exportEnhancedPdf() async {
+    setState(() => _isExporting = true);
+
+    try {
+      final doc = pw.Document();
+      final now = DateTime.now();
+      final filename = 'One_Team_One_Mission_Report_${DateFormat('yyyy_MM_dd').format(now)}.pdf';
+
+      // Get current data
+      final deviceId = context.read<AppState>().deviceId;
+      final dailyRef = FirebaseDatabase.instance.ref('aggregates/daily/$deviceId');
+      final snapshot = await dailyRef.get();
+      final data = (snapshot.value as Map?) ?? {};
+
+      final totalGrain = data.values
+          .map((v) => (v['grainKg'] is num) ? (v['grainKg'] as num).toDouble() : 0.0)
+          .fold(0.0, (a, b) => a + b);
+
+      final totalBales = data.values
+          .map((v) => (v['bales'] is num) ? (v['bales'] as num).toDouble() : 0.0)
+          .fold(0.0, (a, b) => a + b);
+
+      final avgEfficiency = totalGrain > 0 && data.isNotEmpty ? totalGrain / data.length : 0.0;
+
+      doc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(20),
+          build: (pw.Context ctx) => [
+            // Header with branding
+            pw.Container(
+              alignment: pw.Alignment.center,
+              margin: const pw.EdgeInsets.only(bottom: 20),
+              child: pw.Column(
+                children: [
+                  pw.Text(
+                    '[ONE TEAM ONE MISSION]',
+                    style: pw.TextStyle(
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blue800,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Text(
+                    'Harvest Analytics Report',
+                    style: pw.TextStyle(
+                      fontSize: 20,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'Generated on ${DateFormat('MMMM dd, yyyy').format(now)}',
+                    style: const pw.TextStyle(
+                      fontSize: 12,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Summary Section
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 20),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'Executive Summary',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                      decoration: pw.TextDecoration.underline,
+                    ),
+                  ),
+                  pw.SizedBox(height: 12),
+                  pw.Table(
+                    border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
+                    columnWidths: const {
+                      0: pw.FlexColumnWidth(2),
+                      1: pw.FlexColumnWidth(1.5),
+                      2: pw.FlexColumnWidth(1.5),
+                      3: pw.FlexColumnWidth(1.5),
+                    },
+                    children: [
+                      _buildPdfHeaderRow('Metric', 'Value', '', ''),
+                      _buildPdfRow('Total Grain Harvested', '${totalGrain.toInt()} kg', '', ''),
+                      _buildPdfRow('Total Bales Produced', totalBales.toInt().toString(), '', ''),
+                      _buildPdfRow('Average Daily Harvest', '${avgEfficiency.toInt()} kg/day', '', ''),
+                      _buildPdfRow('Report Period', _selectedRange, '', ''),
+                      _buildPdfRow('Data Points', data.length.toString(), '', ''),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Charts Section
+            pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 20),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'Performance Charts',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                      decoration: pw.TextDecoration.underline,
+                    ),
+                  ),
+                  pw.SizedBox(height: 12),
+                  pw.Text(
+                    'Daily Grain Harvest Trend',
+                    style: pw.TextStyle(
+                      fontSize: 14,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Container(
+                    height: 200,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey400),
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    child: pw.Center(
+                      child: pw.Text(
+                        'Chart: Daily Harvest (kg) - Line Chart with Area Fill',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 16),
+                  pw.Text(
+                    'Bales Production Overview',
+                    style: pw.TextStyle(
+                      fontSize: 14,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Container(
+                    height: 200,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey400),
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    child: pw.Center(
+                      child: pw.Text(
+                        'Chart: Bales Produced - Color-coded Bar Chart',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Detailed Data Table
+            if (data.isNotEmpty) ...[
+              pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 20),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'Detailed Daily Records',
+                      style: pw.TextStyle(
+                        fontSize: 16,
+                        fontWeight: pw.FontWeight.bold,
+                        decoration: pw.TextDecoration.underline,
+                      ),
+                    ),
+                    pw.SizedBox(height: 12),
+                    pw.Table(
+                      border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
+                      columnWidths: const {
+                        0: pw.FlexColumnWidth(2),
+                        1: pw.FlexColumnWidth(1.5),
+                        2: pw.FlexColumnWidth(1.5),
+                        3: pw.FlexColumnWidth(1.5),
+                      },
+                      children: [
+                        _buildPdfHeaderRow('Date', 'Grain (kg)', 'Bales', 'Efficiency'),
+                        ...data.entries.map((entry) {
+                          final grain = (entry.value['grainKg'] is num)
+                              ? (entry.value['grainKg'] as num).toDouble()
+                              : 0.0;
+                          final bales = (entry.value['bales'] is num)
+                              ? (entry.value['bales'] as num).toDouble()
+                              : 0.0;
+                          final efficiency = grain > 0 ? grain : 0.0;
+
+                          return _buildPdfRow(
+                            entry.key,
+                            grain.toInt().toString(),
+                            bales.toInt().toString(),
+                            '${efficiency.toInt()} kg',
+                          );
+                        }),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // Footer
+            pw.Container(
+              margin: const pw.EdgeInsets.only(top: 30),
+              alignment: pw.Alignment.center,
+              child: pw.Column(
+                children: [
+                  pw.Divider(),
+                  pw.SizedBox(height: 8),
+                  pw.Text(
+                    '[ONE TEAM ONE MISSION] - Committed to Excellence in Agriculture',
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.grey600,
+                      fontStyle: pw.FontStyle.italic,
+                    ),
+                  ),
+                  pw.Text(
+                    'Report generated by One Team One Mission Dashboard System',
+                    style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+      await Printing.layoutPdf(onLayout: (format) async => doc.save());
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📥 Report downloaded as \'$filename\''),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Export failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+}

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harvestorr - Digital Command Center</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/antd/4.24.8/antd.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <style>
+    :root { --primary-color:#1890ff; --success-color:#52c41a; --warning-color:#faad14; --error-color:#f5222d; --background-color:#f0f2f5; --card-background:#ffffff; --text-color:#333333; --border-color:#d9d9d9; }
+    body { margin:0; padding:0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background:var(--background-color); color:var(--text-color); }
+    .dashboard-container { padding:20px; max-width:100%; overflow-x:hidden; }
+    .header { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); margin-bottom:20px; background:var(--card-background); padding:15px 20px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.03); }
+    .logo-container { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:24px; font-weight:bold; color:var(--primary-color); display:flex; align-items:center; }
+    .logo-icon { margin-right:10px; font-size:28px; }
+    .status-indicator { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:8px; }
+    .status-online { background-color:var(--success-color); }
+    .status-offline { background-color:var(--error-color); }
+    .status-connecting { background-color:var(--warning-color); animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%{opacity:1} 50%{opacity:.5} 100%{opacity:1} }
+    .main-content { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    @media (max-width:1200px){ .main-content{ grid-template-columns:1fr; } }
+    .card { background:var(--card-background); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.03), 0 1px 6px -1px rgba(0,0,0,0.02), 0 2px 4px rgba(0,0,0,0.02); padding:20px; margin-bottom:20px; }
+    .card-title { font-size:16px; font-weight:600; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; color:#1f1f1f; border-bottom:1px solid var(--border-color); padding-bottom:10px; }
+    .visualization-container { height:420px; position:relative; border-radius:6px; overflow:hidden; background:#2c3e50; }
+    #render-container { width:100%; height:100%; }
+    .metrics-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap:16px; margin-bottom:20px; }
+    .metric-card { background:var(--card-background); border-radius:8px; padding:16px; text-align:center; box-shadow:0 1px 2px rgba(0,0,0,0.03), 0 1px 6px -1px rgba(0,0,0,0.02), 0 2px 4px rgba(0,0,0,0.02); }
+    .metric-value { font-size:24px; font-weight:bold; margin:8px 0; color:var(--primary-color); }
+    .metric-label { color:#666; font-size:14px; }
+    .alert-container { max-height:300px; overflow-y:auto; }
+    .alert-item { padding:12px; border-left:3px solid; margin-bottom:8px; background:#fff; border-radius:4px; }
+    .alert-critical{ border-left-color:var(--error-color); background:#fff2f0; }
+    .alert-warning{ border-left-color:var(--warning-color); background:#fffbe6; }
+    .alert-info{ border-left-color:var(--primary-color); background:#f0f8ff; }
+    .chart-container{ height:300px; }
+    .view-controls{ display:flex; gap:10px; align-items:center; }
+    .view-controls input{ width:280px; padding:6px 8px; border:1px solid var(--border-color); border-radius:4px; }
+    .view-controls button{ padding:6px 12px; background:var(--primary-color); color:#fff; border:none; border-radius:4px; cursor:pointer; }
+    .loading-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; color:#fff; font-size:18px; z-index:1000; border-radius:6px; flex-direction:column; }
+    .spinner{ border:4px solid rgba(255,255,255,0.3); border-radius:50%; border-top:4px solid #fff; width:30px; height:30px; animation:spin 1s linear infinite; margin-bottom:15px; }
+    @keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+    .notification-badge{ background:var(--error-color); color:#fff; border-radius:10px; padding:2px 8px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="dashboard-container">
+      <div class="header">
+        <div class="logo-container">
+          <h2 style="color:red; margin:0"><i>One Team One Mission</i> <span style="font-size:12px; color:#999">........</span></h2>
+          <div class="logo"><span class="logo-icon">🚜</span>Harvestorr Command Center</div>
+          <div class="connection-status">
+            <span class="status-indicator status-connecting" id="firebase-status-indicator"></span>
+            <span id="firebase-status-text">Connecting to Firebase...</span>
+          </div>
+          <div class="sensor-status">
+            <span class="status-indicator status-offline" id="sensor-status-indicator"></span>
+            <span id="sensor-status-text">Waiting for sensor data...</span>
+          </div>
+        </div>
+        <div id="current-time">Loading...</div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">PTO RPM</div>
+          <div class="metric-value" id="pto-rpm">0</div>
+          <div>Status: <span id="pto-status" class="pto-inactive pto-status">Inactive</span></div>
+          <div class="data-source" id="pto-source">Source: ESP32 Sensor</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Blockage Status</div>
+          <div class="metric-value" id="blockage-status">No</div>
+          <div>Duration: <span id="blockage-duration">0</span>s</div>
+          <div class="data-source" id="blockage-source">Source: ESP32 Sensor</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Uptime</div>
+          <div class="metric-value" id="uptime">0h 0m</div>
+          <div>Last Update: <span id="last-update">Never</span></div>
+          <div class="data-source" id="uptime-source">Source: ESP32</div>
+        </div>
+      </div>
+
+      <div class="main-content">
+        <div class="card">
+          <div class="card-title">
+            <span>3D Visualization</span>
+            <div class="view-controls">
+              <input id="model-path" placeholder="./tractor.glb or /assets/tractor.glb" />
+              <button id="load-model">Load Model</button>
+              <button id="reset-view">Reset View</button>
+              <button id="toggle-rotation">Pause Rotation</button>
+            </div>
+          </div>
+          <div class="visualization-container">
+            <div id="render-container"></div>
+            <div class="loading-overlay" id="model-loading">
+              <div class="spinner"></div>
+              Loading 3D Model...
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Analytics & Performance</div>
+          <div class="tab-container">
+            <div class="tab active" data-tab="performance">Performance</div>
+            <div class="tab" data-tab="efficiency">Efficiency</div>
+            <div class="tab" data-tab="maintenance">Maintenance</div>
+          </div>
+          <div class="analytics-content active" id="performance-tab">
+            <div class="chart-container" id="performance-chart">
+              <div class="performance-bars" id="performance-bars" style="display:flex;height:200px;align-items:flex-end;gap:15px;justify-content:center;margin-top:30px;">
+                <div class="performance-bar" style="width:40px;height:40px;background:var(--primary-color);border-radius:4px 4px 0 0;position:relative;">
+                  <div class="performance-bar-value" style="position:absolute;top:-25px;left:0;right:0;text-align:center;font-size:12px;font-weight:bold;">40%</div>
+                  <div class="performance-bar-label" style="position:absolute;bottom:-25px;left:0;right:0;text-align:center;font-size:12px;">Output</div>
+                </div>
+                <div class="performance-bar" style="width:40px;height:75px;background:var(--primary-color);border-radius:4px 4px 0 0;position:relative;">
+                  <div class="performance-bar-value" style="position:absolute;top:-25px;left:0;right:0;text-align:center;font-size:12px;font-weight:bold;">75%</div>
+                  <div class="performance-bar-label" style="position:absolute;bottom:-25px;left:0;right:0;text-align:center;font-size:12px;">Efficiency</div>
+                </div>
+                <div class="performance-bar" style="width:40px;height:60px;background:var(--primary-color);border-radius:4px 4px 0 0;position:relative;">
+                  <div class="performance-bar-value" style="position:absolute;top:-25px;left:0;right:0;text-align:center;font-size:12px;font-weight:bold;">60%</div>
+                  <div class="performance-bar-label" style="position:absolute;bottom:-25px;left:0;right:0;text-align:center;font-size:12px;">Uptime</div>
+                </div>
+                <div class="performance-bar" style="width:40px;height:85px;background:var(--primary-color);border-radius:4px 4px 0 0;position:relative;">
+                  <div class="performance-bar-value" style="position:absolute;top:-25px;left:0;right:0;text-align:center;font-size:12px;font-weight:bold;">85%</div>
+                  <div class="performance-bar-label" style="position:absolute;bottom:-25px;left:0;right:0;text-align:center;font-size:12px;">Quality</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="analytics-content" id="efficiency-tab" style="display:none;text-align:center;padding:40px 0;">
+            <h3>Efficiency Metrics</h3>
+            <p>Bales per hour: <span id="bales-per-hour">0</span></p>
+            <p>Blockage incidents: <span id="blockage-incidents">0</span></p>
+            <p>Productivity: <span id="productivity">0</span> bales/h</p>
+          </div>
+          <div class="analytics-content" id="maintenance-tab" style="display:none;text-align:center;padding:40px 0;">
+            <h3>Maintenance Status</h3>
+            <p>Next service in: <span id="next-service">48</span> operating hours</p>
+            <p>System health: <span id="system-health">100</span>%</p>
+            <p>Component wear: <span id="component-wear">within normal range</span></p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span>Alerts & Notifications</span>
+            <span class="notification-badge" id="alert-count">0</span>
+          </div>
+          <div class="alert-container" id="alert-list">
+            <div class="alert-item alert-info">
+              <div><strong>System Initialized</strong></div>
+              <div>Monitoring system started successfully</div>
+              <div style="font-size:12px;color:#999;">Just now</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Machine Controls (future)</div>
+          <div class="stats-container" style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:20px;">
+            <div class="stat-item" style="padding:10px;background:#f9f9f9;border-radius:6px;text-align:center;">
+              <div class="stat-value" id="operating-hours" style="font-size:20px;font-weight:bold;color:var(--primary-color);">0.0</div>
+              <div class="stat-label" style="font-size:12px;color:#888;">Operating Hours</div>
+            </div>
+            <div class="stat-item" style="padding:10px;background:#f9f9f9;border-radius:6px;text-align:center;">
+              <div class="stat-value" id="fuel-level" style="font-size:20px;font-weight:bold;color:var(--primary-color);">100%</div>
+              <div class="stat-label" style="font-size:12px;color:#888;">Fuel Level</div>
+            </div>
+            <div class="stat-item" style="padding:10px;background:#f9f9f9;border-radius:6px;text-align:center;">
+              <div class="stat-value" id="field-area" style="font-size:20px;font-weight:bold;color:var(--primary-color);">0.0</div>
+              <div class="stat-label" style="font-size:12px;color:#888;">Field Area (ha)</div>
+            </div>
+            <div class="stat-item" style="padding:10px;background:#f9f9f9;border-radius:6px;text-align:center;">
+              <div class="stat-value" id="yield-estimate" style="font-size:20px;font-weight:bold;color:var(--primary-color);">0.0</div>
+              <div class="stat-label" style="font-size:12px;color:#888;">Yield (tons/ha)</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpGHhE-ir8S-DxNPWeQc5KU_vfGIVwigQ",
+      authDomain: "harvestorr.firebaseapp.com",
+      databaseURL: "https://harvestorr-default-rtdb.firebaseio.com",
+      projectId: "harvestorr",
+      storageBucket: "harvestorr.firebasestorage.app",
+      messagingSenderId: "436902316402",
+      appId: "1:436902316402:web:b02d1eff201c76298475eb",
+      measurementId: "G-Y9JCKTFLR0"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    function updateConnectionStatus(connected) {
+      const i = document.getElementById('firebase-status-indicator');
+      const t = document.getElementById('firebase-status-text');
+      if (connected) { i.className = 'status-indicator status-online'; t.textContent = 'Connected to Firebase'; }
+      else { i.className = 'status-indicator status-offline'; t.textContent = 'Disconnected from Firebase'; }
+    }
+
+    const connectedRef = database.ref('.info/connected');
+    connectedRef.on('value', snap => updateConnectionStatus(snap.val() === true));
+
+    const tractorDataRef = database.ref('machines/TRACTOR-789/live');
+
+    // Three.js state
+    let scene, camera, renderer, controls, tractorModel, mixer;
+    let isRotating = true;
+    let lastUpdateTime = 0;
+    let blockageStartTime = 0;
+    let blockageIncidents = 0;
+
+    function initThreeJS() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x2c3e50);
+      camera = new THREE.PerspectiveCamera(75, getAspect(), 0.1, 1000);
+      camera.position.set(0, 2, 5);
+      renderer = new THREE.WebGLRenderer({ antialias:true });
+      resizeRenderer();
+      document.getElementById('render-container').appendChild(renderer.domElement);
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true; controls.dampingFactor = 0.05;
+      scene.add(new THREE.AmbientLight(0x404040));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(1,1,1); scene.add(dir);
+      loadModel(getModelPath());
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    function getAspect(){ const el = document.getElementById('render-container'); return el.offsetWidth / el.offsetHeight; }
+    function resizeRenderer(){ const el = document.getElementById('render-container'); renderer.setSize(el.offsetWidth, el.offsetHeight); }
+
+    function getModelPath(){ const v = (document.getElementById('model-path').value || '').trim(); return v || './tractor.glb'; }
+
+    function showLoading(show){ document.getElementById('model-loading').style.display = show ? 'flex' : 'none'; }
+
+    function clearCurrentModel(){ if (tractorModel) { scene.remove(tractorModel); tractorModel.traverse?.(o=>{ if(o.geometry) o.geometry.dispose?.(); if(o.material){ if(Array.isArray(o.material)) o.material.forEach(m=>m.dispose?.()); else o.material.dispose?.(); }}); tractorModel = null; } }
+
+    function loadModel(path){
+      showLoading(true);
+      clearCurrentModel();
+      const loader = new THREE.GLTFLoader();
+      loader.load(
+        path,
+        function(gltf){
+          tractorModel = gltf.scene; scene.add(tractorModel);
+          tractorModel.scale.set(0.02,0.02,0.02); tractorModel.position.y = -1;
+          if (gltf.animations && gltf.animations.length){ mixer = new THREE.AnimationMixer(tractorModel); gltf.animations.forEach(c=>mixer.clipAction(c).play()); }
+          showLoading(false);
+        },
+        undefined,
+        function(err){ console.error('Error loading model:', err); createPlaceholderModel(); showLoading(false); }
+      );
+    }
+
+    function createPlaceholderModel(){
+      const geometry = new THREE.BoxGeometry(2,1,1); const material = new THREE.MeshPhongMaterial({ color:0x00a85a });
+      tractorModel = new THREE.Mesh(geometry, material); scene.add(tractorModel);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1,0.8,1), new THREE.MeshPhongMaterial({ color:0x3498db })); cabin.position.set(0,0.9,0.2); tractorModel.add(cabin);
+      const wg = new THREE.CylinderGeometry(0.4,0.4,0.2,16); const wm = new THREE.MeshPhongMaterial({ color:0x333333 });
+      const w1 = new THREE.Mesh(wg, wm); w1.rotation.z = Math.PI/2; w1.position.set(-0.8,-0.5, 0.6); tractorModel.add(w1);
+      const w2 = new THREE.Mesh(wg, wm); w2.rotation.z = Math.PI/2; w2.position.set( 0.8,-0.5, 0.6); tractorModel.add(w2);
+      const w3 = new THREE.Mesh(wg, wm); w3.rotation.z = Math.PI/2; w3.position.set(-0.8,-0.5,-0.6); tractorModel.add(w3);
+      const w4 = new THREE.Mesh(wg, wm); w4.rotation.z = Math.PI/2; w4.position.set( 0.8,-0.5,-0.6); tractorModel.add(w4);
+    }
+
+    function animate(){ requestAnimationFrame(animate); if(isRotating && tractorModel){ tractorModel.rotation.y += 0.005; } if(mixer){ mixer.update(0.0167); } controls.update(); renderer.render(scene, camera); }
+
+    function onWindowResize(){ camera.aspect = getAspect(); camera.updateProjectionMatrix(); resizeRenderer(); }
+
+    tractorDataRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        updateSensorStatus(true);
+        updateDashboard(data);
+      }
+    }, (error) => {
+      console.error('Error reading from Firebase:', error);
+      document.getElementById('firebase-status-text').textContent = 'Error reading data';
+      document.getElementById('firebase-status-indicator').className = 'status-indicator status-offline';
+      updateSensorStatus(false);
+    });
+
+    function updateSensorStatus(connected){
+      const i = document.getElementById('sensor-status-indicator'); const t = document.getElementById('sensor-status-text');
+      if (connected) { i.className = 'status-indicator status-online'; t.textContent = 'Receiving sensor data'; }
+      else { i.className = 'status-indicator status-offline'; t.textContent = 'No sensor data'; }
+    }
+
+    function updateDashboard(data){
+      const now = Date.now(); const timeDiff = now - lastUpdateTime; lastUpdateTime = now;
+      // Prefer data.ptoRpm; fallback to previous or a default
+      const rpm = (typeof data.ptoRpm === 'number' && !isNaN(data.ptoRpm)) ? Math.floor(data.ptoRpm) : 0;
+      document.getElementById('pto-rpm').textContent = rpm;
+
+      const ptoStatusElement = document.getElementById('pto-status');
+      if (data.ptoActive) { ptoStatusElement.textContent = 'Active'; ptoStatusElement.className = 'pto-active pto-status'; }
+      else { ptoStatusElement.textContent = 'Inactive'; ptoStatusElement.className = 'pto-inactive pto-status'; }
+
+      const bs = document.getElementById('blockage-status'); bs.textContent = data.isBlocked ? 'YES' : 'No'; bs.style.color = data.isBlocked ? '#f5222d' : '#52c41a';
+
+      if (data.isBlocked) { if (blockageStartTime === 0) { blockageStartTime = now; blockageIncidents++; document.getElementById('blockage-incidents').textContent = String(blockageIncidents); }
+        const duration = Math.floor((now - blockageStartTime) / 1000); document.getElementById('blockage-duration').textContent = String(duration);
+      } else { blockageStartTime = 0; document.getElementById('blockage-duration').textContent = '0'; }
+
+      const uptimeMs = data.timestamp || 0; const uptimeHours = Math.floor(uptimeMs / 3600000); const uptimeMins = Math.floor((uptimeMs % 3600000) / 60000);
+      document.getElementById('uptime').textContent = `${uptimeHours}h ${uptimeMins}m`;
+      document.getElementById('operating-hours').textContent = (uptimeMs / 3600000).toFixed(1);
+      document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+      const ts = new Date().toLocaleTimeString();
+      document.getElementById('pto-source').textContent = `Source: ESP32 Sensor • ${ts}`;
+      document.getElementById('blockage-source').textContent = `Source: ESP32 Sensor • ${ts}`;
+      document.getElementById('uptime-source').textContent = `Source: ESP32 • ${ts}`;
+
+      update3DModel(data);
+      updatePerformanceBars(data);
+      updateAdditionalStats(data);
+      checkAlerts(data);
+    }
+
+    function update3DModel(data){ if (!tractorModel) return; if (data.ptoActive) { tractorModel.traverse((child)=>{ if(child.isMesh && child.material && child.material.emissive){ child.material.emissive.set(0,0.3,0); } }); const ptoShaft = tractorModel.getObjectByName('pto_shaft'); if (ptoShaft) { ptoShaft.rotation.x += (data.ptoRpm || 0) / 1000; } } else { tractorModel.traverse((child)=>{ if(child.isMesh && child.material && child.material.emissive){ child.material.emissive.set(0,0,0); } }); }
+      if (data.isBlocked) { const intensity = 0.5 + 0.5 * Math.sin(Date.now() / 200); tractorModel.traverse((child)=>{ if(child.isMesh && child.material && child.material.color){ child.material.color.setRGB(0.5 + intensity*0.5, 0.5 - intensity*0.5, 0.5 - intensity*0.5); } }); }
+      else { tractorModel.traverse((child)=>{ if(child.isMesh && child.material && child.material.color){ if (!child.name.includes('wheel')) child.material.color.setRGB(0, 0.66, 0.35); } }); }
+    }
+
+    function updatePerformanceBars(data){ const bars = document.querySelectorAll('.performance-bar'); if (bars.length >= 4){ const output = Math.min(100, (data.baleCount || 0) * 2); bars[0].style.height = output + 'px'; bars[0].querySelector('.performance-bar-value').textContent = output + '%'; const efficiency = data.isBlocked ? 30 : 90; bars[1].style.height = efficiency + 'px'; bars[1].querySelector('.performance-bar-value').textContent = efficiency + '%'; const uptime = Math.min(100, ((data.timestamp || 0) / 360000) * 10); bars[2].style.height = uptime + 'px'; bars[2].querySelector('.performance-bar-value').textContent = uptime + '%'; const quality = Math.max(50, 100 - (blockageIncidents * 10)); bars[3].style.height = quality + 'px'; bars[3].querySelector('.performance-bar-value').textContent = quality + '%'; } }
+
+    function updateAdditionalStats(data){ const hours = (data.timestamp || 1) / 3600000; const bph = hours > 0 ? (data.baleCount || 0) / hours : 0; document.getElementById('bales-per-hour').textContent = bph.toFixed(1); document.getElementById('productivity').textContent = bph.toFixed(1); const health = Math.max(60, 100 - (blockageIncidents * 5)); document.getElementById('system-health').textContent = String(health); document.getElementById('component-wear').textContent = blockageIncidents > 5 ? 'increased wear' : 'within normal range'; }
+
+    function checkAlerts(data){ const list = document.getElementById('alert-list'); let count = 0; if (list.children.length > 1){ list.innerHTML = '<div class="alert-item alert-info"><div><strong>System Initialized</strong></div><div>Monitoring system started successfully</div><div style="font-size:12px;color:#999;">Just now</div></div>'; }
+      if (data.ptoActive && data.ptoRpm < 500){ count++; const el = document.createElement('div'); el.className = 'alert-item alert-warning'; el.innerHTML = `<div><strong>Low PTO RPM</strong></div><div>PTO is active but RPM is low (${data.ptoRpm} RPM)</div><div style="font-size:12px; color:#999;">${new Date().toLocaleTimeString()}</div>`; list.appendChild(el); }
+      if (data.ptoActive && data.ptoRpm > 1000){ count++; const el = document.createElement('div'); el.className = 'alert-item alert-warning'; el.innerHTML = `<div><strong>High PTO RPM</strong></div><div>PTO RPM is very high (${data.ptoRpm} RPM)</div><div style="font-size:12px; color:#999;">${new Date().toLocaleTimeString()}</div>`; list.appendChild(el); }
+      if (data.isBlocked){ count++; const el = document.createElement('div'); el.className = 'alert-item alert-critical'; el.innerHTML = `<div><strong>BLOCKAGE DETECTED!</strong></div><div>Machine is blocked. Please check immediately.</div><div style="font-size:12px; color:#999;">${new Date().toLocaleTimeString()}</div>`; list.appendChild(el); }
+      if (data.baleCount > 0 && data.baleCount % 10 === 0){ count++; const el = document.createElement('div'); el.className = 'alert-item alert-info'; el.innerHTML = `<div><strong>Production Milestone</strong></div><div>${data.baleCount} bales collected so far</div><div style=\"font-size:12px; color:#999;\">${new Date().toLocaleTimeString()}</div>`; list.appendChild(el); }
+      document.getElementById('alert-count').textContent = String(count);
+    }
+
+    function sendControlCommand(command, value){ database.ref('machines/TRACTOR-789/controls').set({ command, value, timestamp: Date.now() }).then(()=>console.log(`Command ${command} sent successfully`)).catch(err=>{ console.error('Error sending command:', err); alert(`Failed to send command: ${err}`); }); }
+
+    function initDashboard(){
+      initThreeJS();
+      setInterval(()=>{ document.getElementById('current-time').textContent = new Date().toLocaleString(); }, 1000);
+      document.getElementById('reset-view').addEventListener('click', ()=> controls.reset());
+      const toggleBtn = document.getElementById('toggle-rotation');
+      toggleBtn.addEventListener('click', function(){ isRotating = !isRotating; this.textContent = isRotating ? 'Pause Rotation' : 'Start Rotation'; });
+      document.getElementById('load-model').addEventListener('click', ()=>{ const p = getModelPath(); loadModel(p); });
+
+      // Tabs
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab=>{
+        tab.addEventListener('click', ()=>{
+          tabs.forEach(t=>t.classList.remove('active'));
+          tab.classList.add('active');
+          document.querySelectorAll('.analytics-content').forEach(c=>c.style.display='none');
+          const name = tab.getAttribute('data-tab');
+          document.getElementById(name+'-tab').style.display='block';
+        });
+      });
+    }
+
+    window.addEventListener('load', initDashboard);
+  </script>
+</body>
+</html>

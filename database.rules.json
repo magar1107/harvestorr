@@ -1,0 +1,64 @@
+{
+  "rules": {
+    "live": {
+      "$deviceId": {
+        ".read": "root.child('users').child(auth.uid).child('devices').child($deviceId).val() === true",
+        ".write": "auth.token.role === 'functions'"
+      }
+    },
+    "devices": {
+      "$deviceId": {
+        "telemetry": {
+          ".read": "root.child('users').child(auth.uid).child('devices').child($deviceId).val() === true",
+          ".write": "auth.token.role === 'functions'"
+        },
+        "status": {
+          ".read": "root.child('users').child(auth.uid).child('devices').child($deviceId).val() === true",
+          ".write": "auth.token.role === 'functions'"
+        },
+        "alerts": {
+          ".read": "root.child('users').child(auth.uid).child('devices').child($deviceId).val() === true",
+          ".write": "auth.token.role === 'functions'"
+        },
+        "commands": {
+          ".read": false,
+          ".write": "auth.token.role === 'functions'"
+        },
+        "commandResults": {
+          ".read": "root.child('users').child(auth.uid).child('devices').child($deviceId).val() === true",
+          ".write": "auth.token.role === 'functions'"
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "aggregates": {
+      ".read": "auth != null",
+      ".write": "auth.token.role === 'functions'"
+    },
+    "notifications": {
+      "deviceTokens": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
+    "commandRequests": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$cmdId": {
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
+    "deviceRegistry": {
+      ".read": false,
+      ".write": "auth.token.role === 'functions'"
+    }
+  }
+}
